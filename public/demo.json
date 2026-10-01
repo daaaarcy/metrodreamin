@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "id": "demo",
+    "title": "Demo: Harbor City",
+    "createdAt": 1700000000000,
+    "updatedAt": 1700000000000
+  },
+  "stations": {
+    "s1": { "id": "s1", "lng": -74.03, "lat": 40.71, "name": "Airport" },
+    "s2": { "id": "s2", "lng": -74.015, "lat": 40.725, "name": "Harbor Terminal" },
+    "s3": { "id": "s3", "lng": -74.0, "lat": 40.735 },
+    "s4": { "id": "s4", "lng": -73.995, "lat": 40.745, "name": "Union Square" },
+    "s5": { "id": "s5", "lng": -73.99, "lat": 40.755, "name": "Museum Mile" },
+    "s6": { "id": "s6", "lng": -73.98, "lat": 40.765, "name": "Northgate" },
+    "s7": { "id": "s7", "lng": -74.02, "lat": 40.745, "name": "Riverside" },
+    "s8": { "id": "s8", "lng": -74.012, "lat": 40.752 },
+    "s9": { "id": "s9", "lng": -73.975, "lat": 40.745, "name": "Stadium" },
+    "s10": { "id": "s10", "lng": -73.97, "lat": 40.735, "name": "Old Town" },
+    "s11": { "id": "s11", "lng": -73.965, "lat": 40.72, "name": "Southbank" },
+    "s12": { "id": "s12", "lng": -74.005, "lat": 40.76, "name": "University" },
+    "s13": { "id": "s13", "lng": -74.045, "lat": 40.735, "name": "Westport" },
+    "s14": { "id": "s14", "lng": -73.99, "lat": 40.715, "name": "Financial District" },
+    "s15": { "id": "s15", "lng": -73.965, "lat": 40.755, "name": "Hillcrest" },
+    "w1": { "id": "w1", "lng": -73.985, "lat": 40.738 },
+    "w2": { "id": "w2", "lng": -73.992, "lat": 40.728 }
+  },
+  "lines": {
+    "l1": {
+      "id": "l1",
+      "name": "Coast Line",
+      "color": "#e63946",
+      "mode": "metro",
+      "stationIds": ["s1", "s2", "s3", "s4", "s5", "s6"]
+    },
+    "l2": {
+      "id": "l2",
+      "name": "Crosstown",
+      "color": "#3a86ff",
+      "mode": "metro",
+      "stationIds": ["s13", "s7", "s8", "s4", "w1", "s9", "s10", "s11"],
+      "branches": [{ "rootStationId": "s9", "stationIds": ["s15"] }]
+    },
+    "l3": {
+      "id": "l3",
+      "name": "Bay Ferry",
+      "color": "#118ab2",
+      "mode": "ferry",
+      "stationIds": ["s14", "w2", "s2", "s11"]
+    }
+  },
+  "interchanges": {
+    "i1": { "id": "i1", "stationIds": ["s5", "s12"] }
+  }
+}

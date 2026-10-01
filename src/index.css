@@ -1,0 +1,48 @@
+@import 'tailwindcss';
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  overscroll-behavior: none;
+}
+
+.maplibregl-canvas {
+  outline: none;
+}
+
+.panel {
+  @apply bg-white/95 backdrop-blur rounded-xl shadow-lg border border-black/10;
+}
+
+.btn {
+  @apply px-3 py-1.5 rounded-lg text-sm font-medium bg-black/5 hover:bg-black/10 transition-colors cursor-pointer select-none;
+}
+
+.btn-primary {
+  @apply bg-blue-600 text-white hover:bg-blue-700;
+}
+
+.btn-danger {
+  @apply bg-red-50 text-red-700 hover:bg-red-100;
+}
+
+.input {
+  @apply w-full px-2.5 py-1.5 rounded-lg border border-black/15 text-sm outline-none focus:border-blue-500 bg-white;
+}
+
+.label {
+  @apply text-[11px] font-semibold uppercase tracking-wide text-black/50;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+}
