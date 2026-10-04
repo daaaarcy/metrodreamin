@@ -8,12 +8,37 @@ export interface Settings {
   basemapId: string
   hideWaypoints: boolean
   vehiclesOn: boolean
+  theme: 'dark' | 'light'
+  autoName: boolean
+  sidebarOpen: boolean
+  /** Map id → group keys (mode ids or LineGroup ids) hidden on the map. */
+  hiddenGroups: Record<string, string[]>
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   basemapId: 'liberty',
   hideWaypoints: false,
   vehiclesOn: false,
+  theme: 'dark',
+  autoName: true,
+  sidebarOpen: true,
+  hiddenGroups: {},
+}
+
+/** Current map data version. v2: unnamed points became explicit waypoints. */
+export const SYSTEM_VERSION = 2
+
+/** Migrate a loaded/imported/fetched system to the current data model. */
+export function normalizeSystem(s: SystemMap): SystemMap {
+  if ((s.meta.version ?? 1) < 2) {
+    for (const p of Object.values(s.stations)) {
+      if (!p.name) p.waypoint = true
+    }
+  }
+  s.meta.version = SYSTEM_VERSION
+  s.lineGroups ??= {}
+  s.interchanges ??= {}
+  return s
 }
 
 export function uid(): string {
@@ -23,10 +48,11 @@ export function uid(): string {
 export function emptySystem(title: string): SystemMap {
   const now = Date.now()
   return {
-    meta: { id: uid(), title, createdAt: now, updatedAt: now },
+    meta: { id: uid(), title, createdAt: now, updatedAt: now, version: SYSTEM_VERSION },
     stations: {},
     lines: {},
     interchanges: {},
+    lineGroups: {},
   }
 }
 
@@ -35,17 +61,26 @@ export function loadSystems(): Record<string, SystemMap> {
     const raw = localStorage.getItem(SYSTEMS_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    if (!parsed || typeof parsed !== 'object') return {}
+    const out: Record<string, SystemMap> = {}
+    for (const [k, v] of Object.entries(parsed)) {
+      if (v && typeof v === 'object' && (v as SystemMap).meta) {
+        out[k] = normalizeSystem(v as SystemMap)
+      }
+    }
+    return out
   } catch {
     return {}
   }
 }
 
-export function saveSystems(systems: Record<string, SystemMap>) {
+export function saveSystems(systems: Record<string, SystemMap>): boolean {
   try {
     localStorage.setItem(SYSTEMS_KEY, JSON.stringify(systems))
+    return true
   } catch (e) {
     console.warn('localStorage save failed', e)
+    return false
   }
 }
 
@@ -110,17 +145,23 @@ export function parseImport(text: string): SystemMap | null {
       typeof obj.stations === 'object' &&
       typeof obj.lines === 'object'
     ) {
-      return {
+      return normalizeSystem({
         meta: {
           id: typeof obj.meta.id === 'string' ? obj.meta.id : uid(),
           title: obj.meta.title,
           createdAt: obj.meta.createdAt ?? Date.now(),
           updatedAt: Date.now(),
+          // remoteId deliberately dropped — an imported copy gets its own identity
+          ...(typeof obj.meta.caption === 'string' ? { caption: obj.meta.caption } : {}),
+          ...(typeof obj.meta.version === 'number' ? { version: obj.meta.version } : {}),
         },
         stations: obj.stations,
         lines: obj.lines,
         interchanges: obj.interchanges ?? {},
-      }
+        ...(obj.lineGroups && typeof obj.lineGroups === 'object'
+          ? { lineGroups: obj.lineGroups }
+          : {}),
+      })
     }
   } catch {
     /* fallthrough */

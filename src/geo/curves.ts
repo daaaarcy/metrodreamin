@@ -77,6 +77,16 @@ export function haversineKm(a: LngLat, b: LngLat): number {
   return 2 * 6371 * Math.asin(Math.sqrt(s))
 }
 
+/** Initial great-circle bearing from a to b, in degrees (-180..180). */
+export function bearingDeg(a: LngLat, b: LngLat): number {
+  const la1 = (a[1] * Math.PI) / 180
+  const la2 = (b[1] * Math.PI) / 180
+  const dLng = ((b[0] - a[0]) * Math.PI) / 180
+  const y = Math.sin(dLng) * Math.cos(la2)
+  const x = Math.cos(la1) * Math.sin(la2) - Math.sin(la1) * Math.cos(la2) * Math.cos(dLng)
+  return (Math.atan2(y, x) * 180) / Math.PI
+}
+
 export function pathLengthKm(coords: LngLat[], closed = false): number {
   let sum = 0
   for (let i = 1; i < coords.length; i++) sum += haversineKm(coords[i - 1], coords[i])

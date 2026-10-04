@@ -28,6 +28,42 @@ http
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
     if (req.method === 'OPTIONS') return res.writeHead(204).end()
 
+    if (req.method === 'GET' && req.url?.startsWith('/import')) {
+      const send = (code, body) => {
+        res.writeHead(code, { 'Content-Type': 'application/json' })
+        return res.end(JSON.stringify(body))
+      }
+      const raw = new URL(req.url, 'http://localhost').searchParams.get('url')
+      let target
+      try {
+        target = raw ? new URL(raw) : null
+      } catch {
+        target = null
+      }
+      const ok =
+        target &&
+        target.protocol === 'https:' &&
+        (target.hostname === 'metrodreamin.com' || target.hostname === 'www.metrodreamin.com') &&
+        (target.pathname.startsWith('/view/') || target.pathname.startsWith('/edit/'))
+      if (!ok) return send(400, { error: 'Only https://metrodreamin.com/view/… or /edit/… links are supported' })
+      try {
+        const page = await fetch(target, {
+          signal: AbortSignal.timeout(15000),
+          headers: { 'User-Agent': 'MetroDreamer-local-import' },
+        })
+        if (!page.ok) return send(404, { error: 'No map data found at that link' })
+        const html = await page.text()
+        const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s)
+        if (!m) return send(404, { error: 'No map data found at that link' })
+        const pp = JSON.parse(m[1])?.props?.pageProps
+        const map = pp?.fullSystem?.map ?? pp?.systemFromBranch?.map
+        if (!map) return send(404, { error: 'No map data found at that link' })
+        return send(200, { map })
+      } catch {
+        return send(502, { error: 'Could not fetch that link from metrodreamin.com' })
+      }
+    }
+
     const m = req.url?.match(/^\/map(?:\/([A-Za-z0-9_-]+))?\/?$/)
 
     if (req.method === 'GET' && m?.[1] && okId(m[1])) {

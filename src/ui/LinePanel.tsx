@@ -1,9 +1,18 @@
 import { useStore, useSystem } from '../state/store'
-import type { Line, ModeId, LineIcon } from '../types'
+import type { ReactNode } from 'react'
+import type { Line, ModeId, LineIcon, SystemMap } from '../types'
 import { MODES } from '../data/modes'
-import { BASE_COLORS, LINE_ICONS } from '../data/colors'
+import { DEFAULT_LINES, LINE_ICONS } from '../data/colors'
 import { lineStats, fmtKm, fmtMin, fmtMoney, fmtRidership } from '../geo/stats'
+import { linesThrough } from '../geo/query'
 import { flyTo } from '../map/mapRef'
+
+/** Other lines that stop at this point (for transfer chips). */
+function transferLines(sys: SystemMap, line: Line, pointId: string): Line[] {
+  return linesThrough(sys, pointId).filter(
+    (l) => l.id !== line.id && !(l.waypointOverrides ?? []).includes(pointId),
+  )
+}
 
 export function LinePanel({ line }: { line: Line }) {
   const system = useSystem()
@@ -14,13 +23,99 @@ export function LinePanel({ line }: { line: Line }) {
   const setLineColor = useStore((st) => st.setLineColor)
   const setLineMode = useStore((st) => st.setLineMode)
   const setLineIcon = useStore((st) => st.setLineIcon)
+  const setLineGroup = useStore((st) => st.setLineGroup)
   const deleteLine = useStore((st) => st.deleteLine)
+  const removeFromLine = useStore((st) => st.removeFromLine)
+  const removePointsFromLine = useStore((st) => st.removePointsFromLine)
+  const reverseLine = useStore((st) => st.reverseLine)
+  const duplicateLine = useStore((st) => st.duplicateLine)
   const setActivePath = useStore((st) => st.setActivePath)
   const activePath = useStore((st) => st.activePath)
   const beginDrag = useStore((st) => st.beginDrag)
   const endDrag = useStore((st) => st.endDrag)
 
   if (!system || !s) return null
+  const overrides = new Set(line.waypointOverrides ?? [])
+  const isWp = (id: string) => !!system.stations[id]?.waypoint || overrides.has(id)
+  const groups = Object.values(system.lineGroups ?? {}).sort((a, b) =>
+    a.label.toLowerCase().localeCompare(b.label.toLowerCase()),
+  )
+
+  // stop rows: runs of consecutive waypoints collapse into one removable row
+  const stopRows = (ids: string[]) => {
+    const rows: ReactNode[] = []
+    let i = 0
+    while (i < ids.length) {
+      const id = ids[i]
+      const p = system.stations[id]
+      if (!p) {
+        i++
+        continue
+      }
+      if (isWp(id)) {
+        const run = [id]
+        while (i + run.length < ids.length && isWp(ids[i + run.length])) {
+          run.push(ids[i + run.length])
+        }
+        const start = i
+        i += run.length
+        rows.push(
+          <div
+            key={`wp-${id}-${start}`}
+            className="flex items-center gap-2 px-2 py-1 text-sm"
+          >
+            <span className="w-2 h-2 rounded-full shrink-0 bg-muted opacity-40" />
+            <span className="flex-1 text-muted italic">
+              {run.length} waypoint{run.length === 1 ? '' : 's'}
+            </span>
+            <button
+              className="text-[11px] px-1.5 py-0.5 rounded bg-subtle text-muted hover:bg-red-500/15 hover:text-red-500 cursor-pointer"
+              title="Remove these waypoints from the line"
+              onClick={() => removePointsFromLine(line.id, run)}
+            >
+              −
+            </button>
+          </div>,
+        )
+      } else {
+        i++
+        const transfers = transferLines(system, line, id)
+        rows.push(
+          <div key={`st-${id}-${i}`} className="flex items-center gap-2 px-2 py-1 text-sm">
+            <button
+              className="flex items-center gap-2 flex-1 text-left min-w-0 hover:bg-hover rounded-md cursor-pointer"
+              onClick={() => {
+                selectStation(id)
+                flyTo(p.lng, p.lat, 13)
+              }}
+            >
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: line.color }}
+              />
+              <span className="truncate">{p.name || 'Unnamed station'}</span>
+            </button>
+            {transfers.map((t) => (
+              <span
+                key={t.id}
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: t.color }}
+                title={t.name}
+              />
+            ))}
+            <button
+              className="text-[11px] px-1.5 py-0.5 rounded bg-subtle text-muted hover:bg-red-500/15 hover:text-red-500 cursor-pointer"
+              title={`Remove ${p.name || 'station'} from ${line.name}`}
+              onClick={() => removeFromLine(line.id, id)}
+            >
+              −
+            </button>
+          </div>,
+        )
+      }
+    }
+    return rows
+  }
 
   return (
     <div className="absolute left-3 top-16 bottom-4 w-80 panel z-10 flex flex-col overflow-hidden">
@@ -29,7 +124,7 @@ export function LinePanel({ line }: { line: Line }) {
           ←
         </button>
         <span
-          className="inline-block w-4 h-4 rounded-full border border-black/20 shrink-0"
+          className="inline-block w-4 h-4 rounded-full border border-line shrink-0"
           style={{ backgroundColor: line.color }}
         />
         <input
@@ -57,20 +152,39 @@ export function LinePanel({ line }: { line: Line }) {
           </select>
         </div>
 
+        {groups.length > 0 && (
+          <div>
+            <div className="label mb-1">Group</div>
+            <select
+              className="input"
+              value={line.groupId ?? ''}
+              onChange={(e) => setLineGroup(line.id, e.target.value || null)}
+            >
+              <option value="">No group</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div>
           <div className="label mb-1">Color</div>
           <div className="grid grid-cols-7 gap-1.5 mb-1.5">
-            {BASE_COLORS.map((c) => (
+            {DEFAULT_LINES.map((d) => (
               <button
-                key={c}
+                key={d.color}
                 className="w-7 h-7 rounded-full border-2 cursor-pointer"
+                title={d.name}
                 style={{
-                  backgroundColor: c,
-                  borderColor: line.color === c ? '#111' : 'transparent',
+                  backgroundColor: d.color,
+                  borderColor: line.color === d.color ? 'var(--fg)' : 'transparent',
                 }}
                 onClick={() => {
                   beginDrag()
-                  setLineColor(line.id, c)
+                  setLineColor(line.id, d.color)
                   endDrag()
                 }}
               />
@@ -92,7 +206,7 @@ export function LinePanel({ line }: { line: Line }) {
             {LINE_ICONS.map((ic) => (
               <button
                 key={ic.id}
-                className={`btn text-xs ${(line.icon ?? 'solid') === ic.id ? 'bg-blue-100 text-blue-800' : ''}`}
+                className={`btn text-xs ${(line.icon ?? 'solid') === ic.id ? 'is-on' : ''}`}
                 onClick={() => setLineIcon(line.id, ic.id as LineIcon)}
               >
                 {ic.label}
@@ -102,80 +216,54 @@ export function LinePanel({ line }: { line: Line }) {
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-center">
-          <div className="bg-black/5 rounded-lg py-2">
+          <div className="bg-subtle rounded-lg py-2">
             <div className="text-sm font-semibold">{fmtKm(s.lengthKm)}</div>
             <div className="label">Length</div>
           </div>
-          <div className="bg-black/5 rounded-lg py-2">
+          <div className="bg-subtle rounded-lg py-2">
             <div className="text-sm font-semibold">{fmtMin(s.rideMin)}</div>
             <div className="label">Ride time</div>
           </div>
-          <div className="bg-black/5 rounded-lg py-2">
-            <div className="text-sm font-semibold">{fmtMoney(s.costMUsd)}</div>
-            <div className="label">Est. cost</div>
+          <div className="bg-subtle rounded-lg py-2">
+            <div className="text-sm font-semibold">{s.stops}</div>
+            <div className="label">Stations</div>
           </div>
-          <div className="bg-black/5 rounded-lg py-2">
+          <div className="bg-subtle rounded-lg py-2">
             <div className="text-sm font-semibold">{fmtRidership(s.dailyRidership)}</div>
             <div className="label">Ridership</div>
+          </div>
+          <div className="bg-subtle rounded-lg py-2 col-span-2">
+            <div className="text-sm font-semibold">{fmtMoney(s.costMUsd)}</div>
+            <div className="label">Est. cost</div>
           </div>
         </div>
 
         <div>
           <div className="label mb-1">Stops ({s.stops})</div>
-          <div className="space-y-0.5">
-            {line.stationIds.map((id, i) => {
-              const p = system.stations[id]
-              if (!p) return null
-              const isWp = (line.waypointOverrides ?? []).includes(id)
-              return (
-                <button
-                  key={`${id}-${i}`}
-                  className="w-full text-left flex items-center gap-2 px-2 py-1 rounded-md hover:bg-black/5 text-sm cursor-pointer"
-                  onClick={() => {
-                    selectStation(id)
-                    flyTo(p.lng, p.lat, Math.max(13, 0))
-                  }}
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${isWp ? 'bg-black/20' : ''}`}
-                    style={isWp ? {} : { backgroundColor: line.color }}
-                  />
-                  <span className={isWp ? 'text-black/40 italic' : ''}>
-                    {p.name || 'waypoint'}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+          <div className="space-y-0.5">{stopRows(line.stationIds)}</div>
           {(line.branches ?? []).map((b, i) => (
             <div key={i} className="mt-2">
-              <div className="text-[11px] text-black/45 px-2">
-                Branch from {system.stations[b.rootStationId]?.name || 'station'} ({b.stationIds.length} pts)
+              <div className="text-[11px] text-muted px-2">
+                Branch from {system.stations[b.rootStationId]?.name || 'station'} (
+                {b.stationIds.length} pts)
               </div>
-              {b.stationIds.map((id) => {
-                const p = system.stations[id]
-                if (!p) return null
-                return (
-                  <button
-                    key={id}
-                    className="w-full text-left flex items-center gap-2 px-2 py-1 rounded-md hover:bg-black/5 text-sm cursor-pointer"
-                    onClick={() => selectStation(id)}
-                  >
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: line.color }} />
-                    {p.name || 'waypoint'}
-                  </button>
-                )
-              })}
+              <div className="space-y-0.5">{stopRows(b.stationIds)}</div>
             </div>
           ))}
         </div>
 
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           <button
-            className={`btn flex-1 text-xs ${activePath?.lineId === line.id ? 'bg-blue-100 text-blue-800' : ''}`}
+            className={`btn flex-1 text-xs ${activePath?.lineId === line.id ? 'is-on' : ''}`}
             onClick={() => setActivePath({ lineId: line.id, branchIndex: null, end: 'end' })}
           >
             ✏️ Keep drawing
+          </button>
+          <button className="btn flex-1 text-xs" onClick={() => reverseLine(line.id)}>
+            ⇄ Reverse station order
+          </button>
+          <button className="btn flex-1 text-xs" onClick={() => duplicateLine(line.id)}>
+            ⧉ Duplicate line
           </button>
           <button
             className="btn btn-danger flex-1 text-xs"

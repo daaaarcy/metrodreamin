@@ -1,6 +1,6 @@
 import type { FeatureCollection, Feature } from 'geojson'
 import type { MapPoint, SystemMap } from '../types'
-import { linePaths, pathCoords, isLoop, stopIds } from '../geo/stats'
+import { linePaths, pathCoords, isLoop, stopIds, allPointIds } from '../geo/stats'
 import { smoothPath } from '../geo/curves'
 
 export interface GeoBundle {
@@ -10,33 +10,40 @@ export interface GeoBundle {
   interchangeLinks: FeatureCollection
 }
 
-/** Count in how many lines each point is a stop (not a waypoint). */
-function lineUsage(sys: SystemMap): Map<string, number> {
-  const usage = new Map<string, number>()
-  for (const line of Object.values(sys.lines)) {
-    for (const id of stopIds(line)) {
-      usage.set(id, (usage.get(id) ?? 0) + 1)
-    }
-  }
-  return usage
-}
-
 export function buildGeo(
   sys: SystemMap,
   selectedStationId: string | null,
   selectedLineId: string | null,
+  hiddenLineIds: Set<string>,
 ): GeoBundle {
   const lines: Feature[] = []
   const stations: Feature[] = []
   const waypoints: Feature[] = []
   const interchangeLinks: Feature[] = []
 
-  const usage = lineUsage(sys)
+  // stop usage counts only visible lines (hidden groups don't create transfers)
+  const usage = new Map<string, number>()
+  // how many lines (any / visible-only) each point belongs to
+  const onLines = new Map<string, number>()
+  const onVisible = new Map<string, number>()
+  for (const line of Object.values(sys.lines)) {
+    const hidden = hiddenLineIds.has(line.id)
+    if (!hidden) {
+      for (const id of stopIds(sys, line)) {
+        usage.set(id, (usage.get(id) ?? 0) + 1)
+      }
+    }
+    for (const id of new Set(allPointIds(line))) {
+      onLines.set(id, (onLines.get(id) ?? 0) + 1)
+      if (!hidden) onVisible.set(id, (onVisible.get(id) ?? 0) + 1)
+    }
+  }
   const inInterchange = new Set(
     Object.values(sys.interchanges).flatMap((ic) => ic.stationIds),
   )
 
   for (const line of Object.values(sys.lines)) {
+    if (hiddenLineIds.has(line.id)) continue
     const paths = linePaths(line)
     paths.forEach((ids, idx) => {
       const coords = pathCoords(sys, ids)
@@ -57,8 +64,38 @@ export function buildGeo(
     })
   }
 
+  const shown = new Set<string>()
+  for (const p of Object.values(sys.stations)) {
+    // a point whose lines are all hidden is skipped, unless it's selected
+    if ((onLines.get(p.id) ?? 0) > 0 && (onVisible.get(p.id) ?? 0) === 0 && p.id !== selectedStationId) {
+      continue
+    }
+    shown.add(p.id)
+    if (p.waypoint) {
+      waypoints.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+        properties: { id: p.id, selected: p.id === selectedStationId ? 1 : 0 },
+      })
+      continue
+    }
+    const transfer = (usage.get(p.id) ?? 0) > 1 || inInterchange.has(p.id)
+    stations.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+      properties: {
+        id: p.id,
+        name: p.name ?? '',
+        transfer: transfer ? 1 : 0,
+        selected: p.id === selectedStationId ? 1 : 0,
+      },
+    })
+  }
+
   for (const ic of Object.values(sys.interchanges)) {
-    const pts = ic.stationIds.map((id) => sys.stations[id]).filter(Boolean) as MapPoint[]
+    const pts = ic.stationIds
+      .map((id) => sys.stations[id])
+      .filter((p): p is MapPoint => !!p && shown.has(p.id))
     for (let i = 0; i < pts.length; i++) {
       for (let j = i + 1; j < pts.length; j++) {
         interchangeLinks.push({
@@ -74,23 +111,6 @@ export function buildGeo(
         })
       }
     }
-  }
-
-  for (const p of Object.values(sys.stations)) {
-    const transfer = (usage.get(p.id) ?? 0) > 1 || inInterchange.has(p.id)
-    const isStationLike = !!p.name || (usage.get(p.id) ?? 0) > 1 || inInterchange.has(p.id)
-    const feature: Feature = {
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-      properties: {
-        id: p.id,
-        name: p.name ?? '',
-        transfer: transfer ? 1 : 0,
-        selected: p.id === selectedStationId ? 1 : 0,
-      },
-    }
-    if (isStationLike) stations.push(feature)
-    else waypoints.push(feature)
   }
 
   return {

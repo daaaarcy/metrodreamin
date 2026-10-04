@@ -1,6 +1,6 @@
 import type * as maplibregl from 'maplibre-gl'
 import type { LayerSpecification, SourceSpecification } from 'maplibre-gl'
-import { ensureIcons, WAYPOINT_ICON } from './icons'
+import { ensureIcons } from './icons'
 import type { BasemapDef } from '../types'
 
 export const SRC_LINES = 'md-lines'
@@ -12,6 +12,7 @@ export const SRC_PREVIEW = 'md-preview'
 
 export const LYR_STATIONS = 'md-stations'
 export const LYR_WAYPOINTS = 'md-waypoints'
+export const LYR_WAYPOINTS_SELECTED = 'md-waypoints-selected'
 export const LYR_LINES = 'md-lines-main'
 
 const emptyFC = { type: 'FeatureCollection' as const, features: [] }
@@ -123,6 +124,32 @@ function layers(dark: boolean, fonts?: { regular: string; bold: string }): Layer
       },
     },
     {
+      id: LYR_WAYPOINTS,
+      type: 'circle',
+      source: SRC_WAYPOINTS,
+      minzoom: 10,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.6, 14, 2.6, 18, 3.6],
+        'circle-color': '#ffffff',
+        'circle-opacity': 0,
+        'circle-stroke-color': dark ? '#e8e8e8' : '#333',
+        'circle-stroke-width': 1,
+        'circle-stroke-opacity': 0.85,
+      },
+    },
+    {
+      id: LYR_WAYPOINTS_SELECTED,
+      type: 'circle',
+      source: SRC_WAYPOINTS,
+      filter: ['==', ['get', 'selected'], 1],
+      paint: {
+        'circle-radius': 6,
+        'circle-color': 'rgba(0,0,0,0)',
+        'circle-stroke-color': '#4da3ff',
+        'circle-stroke-width': 2,
+      },
+    },
+    {
       id: 'md-transfer-ring',
       type: 'circle',
       source: SRC_STATIONS,
@@ -165,19 +192,6 @@ function layers(dark: boolean, fonts?: { regular: string; bold: string }): Layer
         'circle-stroke-color': '#4da3ff',
         'circle-stroke-width': 2.5,
       },
-    },
-    {
-      id: LYR_WAYPOINTS,
-      type: 'symbol',
-      source: SRC_WAYPOINTS,
-      minzoom: 9,
-      layout: {
-        'icon-image': WAYPOINT_ICON,
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 9, 0.1, 14, 0.16, 18, 0.22],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-      },
-      paint: { 'icon-color': dark ? '#ccc' : '#555', 'icon-opacity': 0.9 },
     },
     {
       id: 'md-station-labels',

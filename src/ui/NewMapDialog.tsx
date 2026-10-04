@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../state/store'
 import { SearchBox, type SearchResult } from './SearchBox'
+import { MdImportForm } from './MdImportForm'
 import { flyTo } from '../map/mapRef'
 
 export function NewMapDialog() {
@@ -35,7 +36,7 @@ export function NewMapDialog() {
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30">
       <div className="panel w-[26rem] p-5">
         <div className="font-bold text-lg mb-1">New map</div>
-        <div className="text-sm text-black/55 mb-4">
+        <div className="text-sm text-muted mb-4">
           Name your system and pick a city to start from — or begin anywhere.
         </div>
         <div className="space-y-3">
@@ -57,7 +58,7 @@ export function NewMapDialog() {
               onSelect={(r) => setPlace(r)}
             />
             {place && (
-              <div className="text-xs text-green-700 mt-1">📍 {place.displayName}</div>
+              <div className="text-xs text-green-500 mt-1">📍 {place.displayName}</div>
             )}
           </div>
         </div>
@@ -73,6 +74,10 @@ export function NewMapDialog() {
               Cancel
             </button>
           )}
+        </div>
+        <div className="mt-4">
+          <div className="label mb-1">Or start from a MetroDreamin map</div>
+          <MdImportForm />
         </div>
       </div>
     </div>

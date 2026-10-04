@@ -89,7 +89,7 @@ export function SearchBox({ placeholder, autoFocus, onSelect }: Props) {
         onFocus={() => results.length && setOpen(true)}
       />
       {loading && (
-        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-black/40">
+        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted">
           …
         </div>
       )}
@@ -98,7 +98,7 @@ export function SearchBox({ placeholder, autoFocus, onSelect }: Props) {
           {results.map((r, i) => (
             <button
               key={i}
-              className="block w-full text-left px-3 py-2 text-sm hover:bg-black/5 cursor-pointer"
+              className="block w-full text-left px-3 py-2 text-sm hover:bg-hover cursor-pointer"
               onClick={() => {
                 setOpen(false)
                 setQ('')

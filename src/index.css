@@ -1,5 +1,40 @@
 @import 'tailwindcss';
 
+@theme inline {
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-panel: var(--panel);
+}
+
+.theme-light {
+  --panel: rgba(255, 255, 255, 0.92);
+  --fg: #111;
+  --muted: rgba(0, 0, 0, 0.55);
+  --subtle: rgba(0, 0, 0, 0.05);
+  --hover: rgba(0, 0, 0, 0.09);
+  --line: rgba(0, 0, 0, 0.12);
+  --accent: #4363d8;
+  --input-bg: #fff;
+  color: var(--fg);
+}
+
+.theme-dark {
+  --panel: rgba(0, 0, 0, 0.62);
+  --fg: #fff;
+  --muted: rgba(255, 255, 255, 0.62);
+  --subtle: rgba(255, 255, 255, 0.07);
+  --hover: rgba(255, 255, 255, 0.13);
+  --line: rgba(255, 255, 255, 0.18);
+  --accent: #577bff;
+  --input-bg: rgba(255, 255, 255, 0.08);
+  color-scheme: dark;
+  color: var(--fg);
+}
+
 html,
 body,
 #root {
@@ -20,29 +55,42 @@ body,
 }
 
 .panel {
-  @apply bg-white/95 backdrop-blur rounded-xl shadow-lg border border-black/10;
+  @apply bg-panel text-fg backdrop-blur-md rounded-xl shadow-lg border border-line;
 }
 
 .btn {
-  @apply px-3 py-1.5 rounded-lg text-sm font-medium bg-black/5 hover:bg-black/10 transition-colors cursor-pointer select-none;
+  @apply px-3 py-1.5 rounded-lg text-sm font-medium bg-subtle hover:bg-hover text-fg transition-colors cursor-pointer select-none;
 }
 
 .btn-primary {
-  @apply bg-blue-600 text-white hover:bg-blue-700;
+  @apply bg-accent text-white;
 }
 
 .btn-danger {
-  @apply bg-red-50 text-red-700 hover:bg-red-100;
+  @apply bg-red-500/15 text-red-500 hover:bg-red-500/25;
+}
+
+.is-on {
+  @apply bg-accent text-white;
 }
 
 .input {
-  @apply w-full px-2.5 py-1.5 rounded-lg border border-black/15 text-sm outline-none focus:border-blue-500 bg-white;
+  @apply w-full px-2.5 py-1.5 rounded-lg border border-line text-sm outline-none focus:border-accent text-fg;
+  background-color: var(--input-bg);
 }
 
 .label {
-  @apply text-[11px] font-semibold uppercase tracking-wide text-black/50;
+  @apply text-[11px] font-semibold uppercase tracking-wide text-muted;
 }
 
 .chip {
   @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
+}
+
+.chip-warn {
+  @apply bg-amber-500/20 text-amber-600;
+}
+
+.theme-dark .chip-warn {
+  @apply text-amber-300;
 }

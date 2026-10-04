@@ -8,13 +8,14 @@ maplibregl.config.WORKER_URL = '/maplibre-gl-worker.mjs'
 import type { Feature, FeatureCollection } from 'geojson'
 import { useStore, useSystem } from '../state/store'
 import { basemapById } from './basemaps'
-import { ensureOverlay, LYR_STATIONS, LYR_WAYPOINTS, LYR_LINES, SRC_LINES, SRC_STATIONS, SRC_WAYPOINTS, SRC_LINKS, SRC_PREVIEW } from './layers'
+import { ensureOverlay, LYR_STATIONS, LYR_WAYPOINTS, LYR_WAYPOINTS_SELECTED, LYR_LINES, SRC_LINES, SRC_STATIONS, SRC_WAYPOINTS, SRC_LINKS, SRC_PREVIEW } from './layers'
 import { buildGeo } from './buildGeo'
 import { mapApi } from './mapRef'
 import { VehicleAnimator } from './vehicles'
 import { linePaths, pathCoords, isLoop } from '../geo/stats'
 import { smoothPath } from '../geo/curves'
 import { MODE_BY_ID } from '../data/modes'
+import { groupKey } from '../data/groups'
 import { nearestSegment, pathEndpoint, terminusRole, linesThrough, activePathEndId } from '../geo/query'
 
 const HIT_STATION = 10
@@ -39,11 +40,17 @@ export function MapView() {
   const hideWaypoints = useStore((s) => s.hideWaypoints)
   const vehiclesOn = useStore((s) => s.vehiclesOn)
   const activePath = useStore((s) => s.activePath)
+  const hiddenGroups = useStore((s) => s.hiddenGroups)
 
-  const geo = useMemo(
-    () => (system ? buildGeo(system, selectedStationId, selectedLineId) : null),
-    [system, selectedStationId, selectedLineId],
-  )
+  const geo = useMemo(() => {
+    if (!system) return null
+    const hiddenLineIds = new Set(
+      Object.values(system.lines)
+        .filter((l) => hiddenGroups.includes(groupKey(system, l)))
+        .map((l) => l.id),
+    )
+    return buildGeo(system, selectedStationId, selectedLineId, hiddenLineIds)
+  }, [system, selectedStationId, selectedLineId, hiddenGroups])
   const geoRef = useRef(geo)
   geoRef.current = geo
   const appliedBasemap = useRef<string | null>(null)
@@ -67,6 +74,10 @@ export function MapView() {
 
     const animator = new VehicleAnimator(map)
     animatorRef.current = animator
+
+    // sidebar toggles / window resizes change the map box — keep it in sync
+    const ro = new ResizeObserver(() => map.resize())
+    ro.observe(container)
 
     const refreshOverlay = () => {
       ensureOverlay(map, basemapById(useStore.getState().basemapId))
@@ -94,7 +105,9 @@ export function MapView() {
       const sys = s.currentId ? s.systems[s.currentId] : undefined
       if (!sys) return
       animator.setTracks(
-        Object.values(sys.lines).flatMap((line) =>
+        Object.values(sys.lines)
+          .filter((line) => !s.hiddenGroups.includes(groupKey(sys, line)))
+          .flatMap((line) =>
           linePaths(line).map((ids) => ({
             color: line.color,
             coords: smoothPath(pathCoords(sys, ids), isLoop(line) && ids === line.stationIds),
@@ -105,8 +118,10 @@ export function MapView() {
     }
     const updateWaypointVisibility = () => {
       const hide = useStore.getState().hideWaypoints
-      if (map.getLayer(LYR_WAYPOINTS)) {
-        map.setLayoutProperty(LYR_WAYPOINTS, 'visibility', hide ? 'none' : 'visible')
+      for (const id of [LYR_WAYPOINTS, LYR_WAYPOINTS_SELECTED]) {
+        if (map.getLayer(id)) {
+          map.setLayoutProperty(id, 'visibility', hide ? 'none' : 'visible')
+        }
       }
     }
     ;(map as unknown as Record<string, unknown>).__mdPushVehicles = pushVehicles
@@ -259,9 +274,15 @@ export function MapView() {
     })
 
     const keydown = (ev: KeyboardEvent) => {
+      const st = useStore.getState()
+      // ⌘S/Ctrl+S works even while typing in a field — never show the browser dialog
+      if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') {
+        ev.preventDefault()
+        void st.save()
+        return
+      }
       const target = ev.target as HTMLElement
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
-      const st = useStore.getState()
       if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z') {
         ev.preventDefault()
         if (ev.shiftKey) st.redo()
@@ -279,6 +300,7 @@ export function MapView() {
 
     return () => {
       window.removeEventListener('keydown', keydown)
+      ro.disconnect()
       animator.stop()
       mapApi.map = null
       map.remove()
@@ -333,7 +355,7 @@ export function MapView() {
     <div className="absolute inset-0">
       <div ref={containerRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
       {hint && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 panel px-4 py-2 text-sm text-black/70 pointer-events-none">
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 panel px-4 py-2 text-sm text-muted pointer-events-none">
           {hint}
         </div>
       )}

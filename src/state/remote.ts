@@ -1,4 +1,5 @@
 import type { SystemMap } from '../types'
+import { normalizeSystem } from './persistence'
 
 // Local map store (server/store.mjs). Fixed port — independent of the dev or
 // preview port the app itself is served from.
@@ -13,7 +14,7 @@ export async function fetchRemote(id: string): Promise<SystemMap | null> {
     const r = await fetch(`${STORE_URL}/map/${id}`)
     if (!r.ok) return null
     const j = await r.json()
-    return j?.meta && j.stations && j.lines ? (j as SystemMap) : null
+    return j?.meta && j.stations && j.lines ? normalizeSystem(j as SystemMap) : null
   } catch {
     return null
   }
@@ -52,4 +53,25 @@ export function pushRemote(sys: SystemMap) {
       }).catch(() => {})
     }, 600),
   )
+}
+
+/** Immediate push of a synced map — cancels any pending debounced push. */
+export async function pushRemoteNow(sys: SystemMap): Promise<boolean> {
+  const rid = sys.meta.remoteId
+  if (!rid) return true
+  const t = timers.get(rid)
+  if (t !== undefined) {
+    window.clearTimeout(t)
+    timers.delete(rid)
+  }
+  try {
+    const r = await fetch(`${STORE_URL}/map/${rid}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sys),
+    })
+    return r.ok
+  } catch {
+    return false
+  }
 }

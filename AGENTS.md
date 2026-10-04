@@ -32,25 +32,41 @@ npx tsc -b       # typecheck only
 
 ## Architecture
 
-- `src/types.ts` — `SystemMap` (stations/lines/interchanges), `Line`, `MapPoint`,
+- `src/types.ts` — `SystemMap` (stations/lines/interchanges/lineGroups, `meta.caption`,
+  `meta.version`), `Line` (`groupId`), `MapPoint` (`waypoint`), `LineGroup`,
   `ActivePath` (`lineId + branchIndex + end` = drawing cursor), `LineBranch`.
 - `src/state/store.ts` — Zustand + immer. `mutate()` = undoable + persisted + bumps
   `meta.updatedAt`; `transient()` = same but no history frame (mid-drag, typing — callers
   wrap sessions in `beginDrag`/`endDrag` which commit one frame). Undo cap 200.
 - `src/state/persistence.ts` — localStorage keys `md.systems.v1`, `md.current.v1`,
-  `md.settings.v1`; `parseImport` validates JSON imports.
+  `md.settings.v1` (basemap, theme, autoName, sidebarOpen, per-map `hiddenGroups`);
+  `parseImport` validates JSON imports. `normalizeSystem` runs on every load/import/fetch:
+  v1→v2 marks unnamed points `waypoint: true` (one-time, gated by `meta.version`).
+- Saving: autosave on every mutation (`saveStatus` tracks success/quota errors); `save()`
+  (Save button / ⌘S) flushes + immediately pushes synced maps (`pushRemoteNow`).
+- `src/state/mdImport.ts` + `GET /import?url=` on the store server — imports
+  metrodreamin.com `/view/` and `/edit/` links (reads `__NEXT_DATA__`; host allowlisted).
 - `src/state/remote.ts` + `server/store.mjs` — optional sync. `meta.remoteId` marks a
   synced map; a store subscriber pushes debounced PUTs; `hydrateRemote` loads `#m=<token>`
   links and adopts newer remote copies on boot. Data dir `server-data/` is gitignored.
 - `src/geo/` — `curves.ts` (Catmull-Rom smoothing, haversine, `nearestOnPolyline`),
   `stats.ts` (`linePaths`, `isLoop`, km/time/cost/ridership heuristics), `query.ts`
-  (hit-testing, `terminusRole`, `activePathEndId`, `linesThrough`).
+  (hit-testing, `terminusRole`, `activePathEndId`, `linesThrough`, `bestInsertIndex` =
+  MD's add-to-line placement, `nearestLines`, `canMakeLoop`), `reverse.ts` (Nominatim
+  reverse geocoding for station auto-naming, serialized ≥1.1s apart).
 - `src/map/` — `MapView.tsx` (map init + all click/drag interaction), `buildGeo.ts`
   (GeoJSON), `layers.ts` (layer defs), `basemaps.ts` (keyless providers + per-provider
   fontstacks), `vehicles.ts` (animator), `mapRef.ts` (`mapApi`/`flyTo` handle).
-- `src/ui/` — TopBar, LinesPanel, LinePanel, StationPanel, ScorePanel, MapListDrawer,
-  NewMapDialog, SearchBox (Nominatim).
-- `src/data/` — `modes.ts` (11 modes), `colors.ts` (21 base colors + icon patterns).
+- `src/ui/` — MetroDreamin-style layout: `MapActions` (icon bar: save, undo, modes,
+  basemap, theme…), `Sidebar` (title, stats, `LineGroups`, caption), `FocusPanel` →
+  `StationPanel`/`LinePanel`, `StationShortcut` (popup by the selected point),
+  `MapListDrawer`, `NewMapDialog`, `MdImportForm`, `SearchBox` (Nominatim).
+- Theme: CSS vars on `.theme-dark`/`.theme-light` exposed as `text-fg`, `text-muted`,
+  `bg-subtle`, `hover:bg-hover`, `border-line`, `bg-accent`, `.is-on` — never hard-code
+  `black/…`/`bg-white` in UI.
+- `src/data/` — `modes.ts` (11 modes), `colors.ts` (MD's 21 `DEFAULT_LINES` names/colors,
+  icon patterns, `luminance`), `groups.ts` (`sortLines`, `groupKey` = `groupId ?? mode`,
+  `lineGroupsView`).
 - `public/demo.json` — built-in demo map; `public/maplibre-gl-*.mjs` — vendored worker.
 
 ## Interaction model (be careful — regressions here corrupt user maps)
@@ -61,12 +77,15 @@ npx tsc -b       # typecheck only
   station clicks silently append stations to lines).
 - While armed: clicking a station/waypoint appends that point to the path (shared
   stations/loops). While not armed: station click = select + switch line context.
+- Empty-map clicks create **stations** (auto-named via `reverse.ts`) unless the sticky
+  `addingWaypoints` mode is on (set by converting a point to a waypoint, or the toolbar
+  toggle). Clicking a line inserts a waypoint. Converting keeps the name.
 - Esc disarms and clears selection. Every mutation must stay undoable.
 
 ## Conventions / gotchas
 
-- **Stations vs waypoints are the same `MapPoint`** — presence of `name` makes it a
-  station. Per-line "pass through" = `line.waypointOverrides`.
+- **Stations vs waypoints are the same `MapPoint`** — `p.waypoint === true` makes it a
+  waypoint (name is ignored). Per-line "pass through" = `line.waypointOverrides`.
 - **Branch paths** = `[rootStationId, ...branch.stationIds]`; `insertIndex` in
   `nearestSegment` already accounts for the root (splice directly).
 - **MapLibre worker** must stay served from `public/` via

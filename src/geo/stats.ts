@@ -25,12 +25,15 @@ export function isLoop(line: Line): boolean {
   )
 }
 
-/** Ids the line stops at (excludes waypoint overrides). */
-export function stopIds(line: Line): Set<string> {
+/** Ids the line stops at (excludes waypoints and per-line waypoint overrides). */
+export function stopIds(sys: SystemMap, line: Line): Set<string> {
   const overrides = new Set(line.waypointOverrides ?? [])
   const ids = new Set<string>()
   for (const path of linePaths(line)) {
-    for (const id of path) if (!overrides.has(id)) ids.add(id)
+    for (const id of path) {
+      if (overrides.has(id) || sys.stations[id]?.waypoint) continue
+      ids.add(id)
+    }
   }
   return ids
 }
@@ -87,8 +90,7 @@ export function lineStats(sys: SystemMap, line: Line): LineStats {
       if (counted.has(id)) continue
       counted.add(id)
       const p = sys.stations[id]
-      if (p && (p.name || id !== id)) void p
-      if (overrides.has(id)) waypoints++
+      if (overrides.has(id) || p?.waypoint) waypoints++
       else stops++
     }
   }
@@ -112,6 +114,7 @@ export interface SystemStats {
   waypoints: number
   interchanges: number
   lines: number
+  modes: number
   score: number
 }
 
@@ -125,9 +128,10 @@ export function systemStats(sys: SystemMap): SystemStats {
     waypoints: 0,
     interchanges: Object.keys(sys.interchanges).length,
     lines: Object.keys(sys.lines).length,
+    modes: new Set(Object.values(sys.lines).map((l) => l.mode)).size,
     score: 0,
   }
-  const namedStations = Object.values(sys.stations).filter((p) => p.name).length
+  const stationCount = Object.values(sys.stations).filter((p) => !p.waypoint).length
   for (const line of Object.values(sys.lines)) {
     const s = lineStats(sys, line)
     agg.lengthKm += s.lengthKm
@@ -139,7 +143,7 @@ export function systemStats(sys: SystemMap): SystemStats {
   }
   // Transparent heuristic "map score": rewards coverage and connectivity.
   agg.score = Math.round(
-    namedStations * 10 + agg.interchanges * 15 + agg.lines * 8 + agg.lengthKm * 2,
+    stationCount * 10 + agg.interchanges * 15 + agg.lines * 8 + agg.lengthKm * 2,
   )
   return agg
 }

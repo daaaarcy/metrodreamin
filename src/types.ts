@@ -15,13 +15,14 @@ export type ModeId =
   | 'hsr'
   | 'airliner'
 
-/** A point on the map. Points with a name render as stations; unnamed points are waypoints. */
+/** A point on the map. Waypoints shape lines but aren't stops; the rest are stations. */
 export interface MapPoint {
   id: string
   lng: number
   lat: number
   name?: string
   grade?: Grade
+  waypoint?: boolean
 }
 
 export interface LineBranch {
@@ -42,6 +43,8 @@ export interface Line {
   /** Point ids this line passes through without stopping (per-line waypoints). */
   waypointOverrides?: string[]
   branches?: LineBranch[]
+  /** Custom line group this line belongs to (falls back to its mode group). */
+  groupId?: string
 }
 
 /** Walking transfer between two or more stations. */
@@ -50,18 +53,28 @@ export interface Interchange {
   stationIds: string[]
 }
 
+/** A user-named group of lines (lines without one group by mode). */
+export interface LineGroup {
+  id: string
+  label: string
+}
+
 export interface SystemMap {
   meta: {
     id: string
     title: string
+    caption?: string
     createdAt: number
     updatedAt: number
+    /** Data-model version; see SYSTEM_VERSION in persistence. */
+    version?: number
     /** Token on the local store server — set when the map is shared/synced. */
     remoteId?: string
   }
   stations: Record<string, MapPoint>
   lines: Record<string, Line>
   interchanges: Record<string, Interchange>
+  lineGroups?: Record<string, LineGroup>
 }
 
 export interface MapIndexEntry {

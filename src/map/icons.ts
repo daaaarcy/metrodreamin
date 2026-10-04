@@ -69,18 +69,7 @@ function star(ctx: CanvasRenderingContext2D, s: number) {
   ctx.fill()
 }
 
-function cross(ctx: CanvasRenderingContext2D, s: number) {
-  const w = s * 0.14
-  ctx.save()
-  ctx.translate(s / 2, s / 2)
-  ctx.rotate(Math.PI / 4)
-  ctx.fillRect(-s * 0.35, -w / 2, s * 0.7, w)
-  ctx.fillRect(-w / 2, -s * 0.35, w, s * 0.7)
-  ctx.restore()
-}
-
 export const LINE_ICON_NAMES = ['circle', 'diamond', 'plus', 'heart', 'star'] as const
-export const WAYPOINT_ICON = 'mdx'
 export const lineIconImageId = (icon: string) => `mdi-${icon}`
 
 const DRAWERS: Record<string, (ctx: CanvasRenderingContext2D, s: number) => void> = {
@@ -89,7 +78,6 @@ const DRAWERS: Record<string, (ctx: CanvasRenderingContext2D, s: number) => void
   [lineIconImageId('plus')]: plus,
   [lineIconImageId('heart')]: heart,
   [lineIconImageId('star')]: star,
-  [WAYPOINT_ICON]: cross,
 }
 
 /** Register all SDF icons on the map (idempotent). */
