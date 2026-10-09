@@ -8,7 +8,6 @@ export const SRC_STATIONS = 'md-stations'
 export const SRC_WAYPOINTS = 'md-waypoints'
 export const SRC_LINKS = 'md-links'
 export const SRC_VEHICLES = 'md-vehicles'
-export const SRC_PREVIEW = 'md-preview'
 
 export const LYR_STATIONS = 'md-stations'
 export const LYR_WAYPOINTS = 'md-waypoints'
@@ -24,7 +23,6 @@ function sources(): Record<string, SourceSpecification> {
     [SRC_WAYPOINTS]: { type: 'geojson', data: emptyFC },
     [SRC_LINKS]: { type: 'geojson', data: emptyFC },
     [SRC_VEHICLES]: { type: 'geojson', data: emptyFC },
-    [SRC_PREVIEW]: { type: 'geojson', data: emptyFC },
   }
 }
 
@@ -211,30 +209,6 @@ function layers(dark: boolean, fonts?: { regular: string; bold: string }): Layer
         'text-color': stationText,
         'text-halo-color': halo,
         'text-halo-width': 1.4,
-      },
-    },
-    {
-      id: 'md-preview-line',
-      type: 'line',
-      source: SRC_PREVIEW,
-      filter: ['==', ['get', 'kind'], 'line'],
-      paint: {
-        'line-color': '#4da3ff',
-        'line-width': 3,
-        'line-dasharray': [2, 2],
-        'line-opacity': 0.7,
-      },
-    },
-    {
-      id: 'md-preview-dot',
-      type: 'circle',
-      source: SRC_PREVIEW,
-      filter: ['==', ['get', 'kind'], 'dot'],
-      paint: {
-        'circle-radius': 5,
-        'circle-color': 'rgba(77,163,255,0.35)',
-        'circle-stroke-color': '#4da3ff',
-        'circle-stroke-width': 1.5,
       },
     },
     {

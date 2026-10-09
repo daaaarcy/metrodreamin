@@ -70,6 +70,8 @@ export interface SystemMap {
     version?: number
     /** Token on the local store server — set when the map is shared/synced. */
     remoteId?: string
+    /** Title of the map this was branched from (duplicate/MD import). */
+    branchedFrom?: string
   }
   stations: Record<string, MapPoint>
   lines: Record<string, Line>
@@ -83,13 +85,6 @@ export interface MapIndexEntry {
   updatedAt: number
   stationCount: number
   lineCount: number
-}
-
-/** Identifies the path a drawing action extends. branchIndex null = trunk. */
-export interface ActivePath {
-  lineId: string
-  branchIndex: number | null
-  end: 'start' | 'end'
 }
 
 export interface BasemapDef {

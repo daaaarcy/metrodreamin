@@ -17,8 +17,6 @@ export function MapActions() {
   const setHideWaypoints = useStore((s) => s.setHideWaypoints)
   const vehiclesOn = useStore((s) => s.vehiclesOn)
   const setVehiclesOn = useStore((s) => s.setVehiclesOn)
-  const addingWaypoints = useStore((s) => s.addingWaypoints)
-  const setAddingWaypoints = useStore((s) => s.setAddingWaypoints)
   const theme = useStore((s) => s.theme)
   const setTheme = useStore((s) => s.setTheme)
   const sidebarOpen = useStore((s) => s.sidebarOpen)
@@ -69,17 +67,6 @@ export function MapActions() {
         style={{ opacity: canRedo ? 1 : 0.4 }}
       >
         ↻
-      </button>
-      <button
-        className={`${IB} ${addingWaypoints ? 'is-on' : ''}`}
-        title={
-          addingWaypoints
-            ? 'Adding waypoints — click to add stations instead'
-            : 'Add waypoints instead of stations'
-        }
-        onClick={() => setAddingWaypoints(!addingWaypoints)}
-      >
-        ◦
       </button>
       <button
         className={`${IB} ${hideWaypoints ? 'is-on' : ''}`}

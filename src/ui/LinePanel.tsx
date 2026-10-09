@@ -29,8 +29,6 @@ export function LinePanel({ line }: { line: Line }) {
   const removePointsFromLine = useStore((st) => st.removePointsFromLine)
   const reverseLine = useStore((st) => st.reverseLine)
   const duplicateLine = useStore((st) => st.duplicateLine)
-  const setActivePath = useStore((st) => st.setActivePath)
-  const activePath = useStore((st) => st.activePath)
   const beginDrag = useStore((st) => st.beginDrag)
   const endDrag = useStore((st) => st.endDrag)
 
@@ -253,12 +251,6 @@ export function LinePanel({ line }: { line: Line }) {
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          <button
-            className={`btn flex-1 text-xs ${activePath?.lineId === line.id ? 'is-on' : ''}`}
-            onClick={() => setActivePath({ lineId: line.id, branchIndex: null, end: 'end' })}
-          >
-            ✏️ Keep drawing
-          </button>
           <button className="btn flex-1 text-xs" onClick={() => reverseLine(line.id)}>
             ⇄ Reverse station order
           </button>

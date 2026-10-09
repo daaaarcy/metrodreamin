@@ -28,12 +28,15 @@ export function StationPanel({ stationId }: { stationId: string }) {
   const [showAll, setShowAll] = useState(false)
 
   const p = system?.stations[stationId]
+  const isWaypoint = !!p?.waypoint
+  const hint = useStore((s) => s.nameHints[stationId])
 
-  // focus the name field when a fresh (unnamed) station is selected
+  // focus the name field when a fresh (unnamed) station is selected, or a
+  // waypoint is converted back to a station
   useEffect(() => {
     if (p && !p.name && !p.waypoint) nameRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stationId])
+  }, [stationId, isWaypoint])
 
   if (!system || !p) return null
 
@@ -42,7 +45,6 @@ export function StationPanel({ stationId }: { stationId: string }) {
     ic.stationIds.includes(stationId),
   )
   const isTerminus = lines.some((l) => terminusRole(system, stationId, l.id))
-  const isWaypoint = !!p.waypoint
   const addable = nearestLines(system, stationId, Infinity, recentLineId)
   const shown = showAll ? addable : addable.slice(0, 5)
   const loopable = lines.filter((l) => canMakeLoop(l, stationId))
@@ -73,6 +75,18 @@ export function StationPanel({ stationId }: { stationId: string }) {
               onBlur={endDrag}
               onChange={(e) => renamePoint(stationId, e.target.value)}
             />
+            {!p.name && hint && (
+              <button
+                className="text-[11px] text-accent cursor-pointer mt-1"
+                onClick={() => {
+                  beginDrag()
+                  renamePoint(stationId, hint)
+                  endDrag()
+                }}
+              >
+                📍 Suggest: {hint}
+              </button>
+            )}
           </div>
         )}
 

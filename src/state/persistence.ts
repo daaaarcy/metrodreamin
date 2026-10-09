@@ -154,6 +154,9 @@ export function parseImport(text: string): SystemMap | null {
           // remoteId deliberately dropped — an imported copy gets its own identity
           ...(typeof obj.meta.caption === 'string' ? { caption: obj.meta.caption } : {}),
           ...(typeof obj.meta.version === 'number' ? { version: obj.meta.version } : {}),
+          ...(typeof obj.meta.branchedFrom === 'string'
+            ? { branchedFrom: obj.meta.branchedFrom }
+            : {}),
         },
         stations: obj.stations,
         lines: obj.lines,

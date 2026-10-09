@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { produce } from 'immer'
 import type {
-  ActivePath,
   Grade,
   Interchange,
   Line,
@@ -24,7 +23,7 @@ import {
 } from './persistence'
 import { createRemote, fetchRemote, pushRemote, pushRemoteNow, STORE_URL } from './remote'
 import { fromMetroDreamin } from './mdImport'
-import { bestInsertIndex, canMakeLoop, linesThrough } from '../geo/query'
+import { bestInsertIndex, canMakeLoop } from '../geo/query'
 import { haversineKm } from '../geo/curves'
 import { reverseName } from '../geo/reverse'
 import { fitPoints } from '../map/mapRef'
@@ -42,7 +41,6 @@ interface Store {
 
   selectedLineId: string | null
   selectedStationId: string | null
-  activePath: ActivePath | null
   pendingInterchangeFrom: string | null
 
   basemapId: string
@@ -57,6 +55,8 @@ interface Store {
   addingWaypoints: boolean
   /** Line most recently edited — used to rank "Add to line" suggestions. */
   recentLineId: string | null
+  /** Reverse-geocoded name suggestions for unnamed stations (UI-only). */
+  nameHints: Record<string, string>
   saveStatus: { at: number | null; error: string | null; syncing: boolean }
   detailsOpen: boolean
   drawerOpen: boolean
@@ -64,8 +64,6 @@ interface Store {
 
   // --- system mutations (undoable) ---
   addPoint: (lng: number, lat: number) => void
-  appendExistingPoint: (stationId: string) => void
-  insertPointOnLine: (lineId: string, branchIndex: number | null, index: number, lng: number, lat: number) => void
   movePoint: (id: string, lng: number, lat: number) => void // transient (no history)
   beginDrag: () => void
   endDrag: () => void
@@ -124,7 +122,6 @@ interface Store {
   // --- selection / ui ---
   selectLine: (id: string | null) => void
   selectStation: (id: string | null) => void
-  setActivePath: (p: ActivePath | null) => void
   setPendingInterchange: (stationId: string | null) => void
   setBasemap: (id: string) => void
   setHideWaypoints: (v: boolean) => void
@@ -229,17 +226,15 @@ export const useStore = create<Store>()((set, get) => {
     return currentId ? systems[currentId] : undefined
   }
 
-  /** Auto-name a station from its surroundings (street or town level by mode). */
-  const maybeAutoName = (pointId: string, mode?: ModeId) => {
+  /** Reverse-geocode a name suggestion for a station (street or town level by
+   *  mode). Lands in nameHints as a "Suggest" chip — never sets the name. */
+  const suggestName = (pointId: string, mode?: ModeId) => {
     if (!get().autoName) return
     const p = sys()?.stations[pointId]
-    if (!p || p.waypoint || p.name) return
+    if (!p || p.waypoint) return
     void reverseName(p.lng, p.lat, !!mode && COARSE_MODES.has(mode)).then((name) => {
       if (!name) return
-      transient((d) => {
-        const pt = d.stations[pointId]
-        if (pt && !pt.waypoint && !pt.name) pt.name = name
-      })
+      set((st) => ({ nameHints: { ...st.nameHints, [pointId]: name } }))
     })
   }
 
@@ -256,26 +251,13 @@ export const useStore = create<Store>()((set, get) => {
         future: [],
         selectedLineId: null,
         selectedStationId: null,
-        activePath: null,
         newMapOpen: false,
         drawerOpen: false,
         hiddenGroups: hiddenByMap[s.meta.id] ?? [],
+        nameHints: {},
       }
     })
     saveCurrentId(s.meta.id)
-  }
-
-  /** Station ids an ActivePath refers to. */
-  const pathIds = (line: Line, ap: ActivePath): string[] =>
-    ap.branchIndex == null ? line.stationIds : (line.branches?.[ap.branchIndex]?.stationIds ?? [])
-
-  const addPointToPath = (sys: SystemMap, ap: ActivePath, point: MapPoint) => {
-    sys.stations[point.id] = point
-    const line = sys.lines[ap.lineId]
-    if (!line) return
-    const ids = pathIds(line, ap)
-    if (ap.end === 'end') ids.push(point.id)
-    else ids.unshift(point.id)
   }
 
   return {
@@ -285,7 +267,6 @@ export const useStore = create<Store>()((set, get) => {
     future: [],
     selectedLineId: null,
     selectedStationId: null,
-    activePath: null,
     pendingInterchangeFrom: null,
     basemapId: init.settings.basemapId,
     hideWaypoints: init.settings.hideWaypoints,
@@ -296,6 +277,7 @@ export const useStore = create<Store>()((set, get) => {
     hiddenGroups: init.currentId ? (hiddenByMap[init.currentId] ?? []) : [],
     addingWaypoints: false,
     recentLineId: null,
+    nameHints: {},
     saveStatus: { at: null, error: null, syncing: false },
     detailsOpen: false,
     drawerOpen: false,
@@ -303,84 +285,22 @@ export const useStore = create<Store>()((set, get) => {
 
     // ---------------- editing ----------------
 
+    // MD's handleMapClick: a map click creates a standalone point — a waypoint
+    // when the sticky waypoint mode is armed, else a nameless station the
+    // player names (reverse-geocode only fills the "Suggest" chip). Points join
+    // lines only via the "Add to X" actions — a click never extends a line.
     addPoint: (lng, lat) => {
       const s = sys()
       if (!s) return
       const point: MapPoint = { id: uid(), lng, lat }
       if (get().addingWaypoints) point.waypoint = true
-      const { activePath, selectedLineId } = get()
-
-      let ap = activePath
-      if (!ap || !s.lines[ap.lineId]) {
-        // default: extend end of selected line, else create a new line
-        ap =
-          selectedLineId && s.lines[selectedLineId]
-            ? { lineId: selectedLineId, branchIndex: null, end: 'end' }
-            : null
-      }
-
-      if (!ap) {
-        mutate((d) => {
-          d.stations[point.id] = point
-          const id = uid()
-          const def = nextDefaultLine(Object.values(d.lines).map((l) => l.color))
-          d.lines[id] = {
-            id,
-            name: def.name,
-            color: def.color,
-            mode: 'metro',
-            stationIds: [point.id],
-          }
-        })
-        const s2 = sys()
-        const newLineId = s2 ? Object.keys(s2.lines).find((k) => s2.lines[k].stationIds.includes(point.id)) : null
-        set({
-          selectedLineId: newLineId,
-          selectedStationId: point.id,
-          recentLineId: newLineId,
-          activePath: newLineId ? { lineId: newLineId, branchIndex: null, end: 'end' } : null,
-        })
-        maybeAutoName(point.id, 'metro')
-        return
-      }
-
-      mutate((d) => addPointToPath(d, ap!, point))
-      // placing a point arms drawing so subsequent clicks (incl. existing
-      // stations) keep extending the same path
-      set({ selectedStationId: point.id, activePath: ap, recentLineId: ap.lineId })
-      maybeAutoName(point.id, s.lines[ap.lineId]?.mode)
-    },
-
-    /** Attach an existing station/waypoint to the active path's drawing end. */
-    appendExistingPoint: (stationId) => {
-      const s = sys()
-      if (!s || !s.stations[stationId]) return
-      const { activePath } = get()
-      const ap = activePath && s.lines[activePath.lineId] ? activePath : null
-      if (!ap) return
       mutate((d) => {
-        const line = d.lines[ap!.lineId]
-        if (!line) return
-        const ids = pathIds(line, ap!)
-        if (ap!.end === 'end') ids.push(stationId)
-        else ids.unshift(stationId)
-      })
-      set({ selectedStationId: stationId, recentLineId: ap.lineId })
-    },
-
-    insertPointOnLine: (lineId, branchIndex, index, lng, lat) => {
-      const point: MapPoint = { id: uid(), lng, lat, waypoint: true }
-      mutate((d) => {
-        const line = d.lines[lineId]
-        if (!line) return
         d.stations[point.id] = point
-        if (branchIndex == null) {
-          line.stationIds.splice(index, 0, point.id)
-        } else {
-          line.branches?.[branchIndex]?.stationIds.splice(index, 0, point.id)
-        }
       })
       set({ selectedStationId: point.id })
+      if (!point.waypoint) {
+        suggestName(point.id, s.lines[get().recentLineId ?? '']?.mode)
+      }
     },
 
     beginDrag: () => {
@@ -459,7 +379,7 @@ export const useStore = create<Store>()((set, get) => {
       const s = sys()
       if (selectedStationId === id) set({ selectedStationId: null })
       if (s && selectedLineId && !s.lines[selectedLineId]) {
-        set({ selectedLineId: null, activePath: null })
+        set({ selectedLineId: null })
       }
     },
 
@@ -471,7 +391,7 @@ export const useStore = create<Store>()((set, get) => {
         if (!p) return
         if (toWaypoint) {
           p.waypoint = true
-          // name is kept — converting back restores it; displays ignore it
+          delete p.name
           for (const [iid, ic] of Object.entries(d.interchanges)) {
             ic.stationIds = ic.stationIds.filter((sid) => sid !== id)
             if (ic.stationIds.length < 2) delete d.interchanges[iid]
@@ -483,7 +403,7 @@ export const useStore = create<Store>()((set, get) => {
       // converting sets the sticky mode — subsequent clicks add the same kind
       set({ addingWaypoints: toWaypoint })
       if (!toWaypoint) {
-        maybeAutoName(id, linesThrough(s, id)[0]?.mode)
+        suggestName(id, s.lines[get().recentLineId ?? '']?.mode)
       }
     },
 
@@ -509,7 +429,6 @@ export const useStore = create<Store>()((set, get) => {
         selectedLineId: id,
         selectedStationId: null,
         recentLineId: id,
-        activePath: { lineId: id, branchIndex: null, end: 'end' },
       })
     },
 
@@ -552,7 +471,7 @@ export const useStore = create<Store>()((set, get) => {
         delete d.lines[id]
       })
       const { selectedLineId } = get()
-      if (selectedLineId === id) set({ selectedLineId: null, activePath: null })
+      if (selectedLineId === id) set({ selectedLineId: null })
     },
 
     toggleLineWaypoint: (lineId, stationId) => {
@@ -586,7 +505,7 @@ export const useStore = create<Store>()((set, get) => {
       })
       const s = sys()
       if (s && get().selectedLineId === lineId && !s.lines[lineId]) {
-        set({ selectedLineId: null, activePath: null })
+        set({ selectedLineId: null })
       }
     },
 
@@ -636,10 +555,6 @@ export const useStore = create<Store>()((set, get) => {
         const l = d.lines[lineId]
         if (l) l.stationIds.reverse()
       })
-      const ap = get().activePath
-      if (ap && ap.lineId === lineId && ap.branchIndex == null) {
-        set({ activePath: { ...ap, end: ap.end === 'end' ? 'start' : 'end' } })
-      }
     },
 
     duplicateLine: (lineId) => {
@@ -663,14 +578,8 @@ export const useStore = create<Store>()((set, get) => {
         l.branches = (l.branches ?? []).filter((b) => b.stationIds.length > 0)
         l.branches.push({ rootStationId, stationIds: [] })
       })
-      const l = sys()?.lines[lineId]
-      const idx = (l?.branches?.length ?? 1) - 1
-      if (idx >= 0) {
-        set({
-          selectedLineId: lineId,
-          recentLineId: lineId,
-          activePath: { lineId, branchIndex: idx, end: 'end' },
-        })
+      if (sys()?.lines[lineId]) {
+        set({ selectedLineId: lineId, recentLineId: lineId })
       }
     },
 
@@ -828,19 +737,16 @@ export const useStore = create<Store>()((set, get) => {
 
     // ---------------- selection / ui ----------------
 
-    // Selecting a line is only an editing context — it does NOT arm drawing.
-    // Drawing is armed by: new line, terminus click, branch, or adding a point.
+    // Selecting a line is only an editing context — points join it via the
+    // "Add to X" actions, never by map clicks.
     selectLine: (id) =>
       set((s) => ({
         selectedLineId: id,
         selectedStationId: null,
-        activePath: null,
         recentLineId: id ?? s.recentLineId,
       })),
 
     selectStation: (id) => set({ selectedStationId: id }),
-
-    setActivePath: (p) => set({ activePath: p }),
 
     setPendingInterchange: (stationId) => set({ pendingInterchangeFrom: stationId }),
 
@@ -886,9 +792,9 @@ export const useStore = create<Store>()((set, get) => {
           future: [],
           selectedLineId: null,
           selectedStationId: null,
-          activePath: null,
           newMapOpen: false,
           hiddenGroups: [],
+          nameHints: {},
         }
       })
       saveCurrentId(s.meta.id)
@@ -902,9 +808,9 @@ export const useStore = create<Store>()((set, get) => {
         future: [],
         selectedLineId: null,
         selectedStationId: null,
-        activePath: null,
         drawerOpen: false,
         hiddenGroups: hiddenByMap[id] ?? [],
+        nameHints: {},
       })
       saveCurrentId(id)
     },
@@ -938,6 +844,7 @@ export const useStore = create<Store>()((set, get) => {
       const copy: SystemMap = JSON.parse(JSON.stringify(src))
       copy.meta = { ...copy.meta, id: uid(), title: `${src.meta.title} (copy)`, updatedAt: Date.now() }
       delete copy.meta.remoteId // a duplicate gets its own identity — no shared token
+      copy.meta.branchedFrom = src.meta.title
       set((state) => {
         const systems = { ...state.systems, [copy.meta.id]: copy }
         return { systems, saveStatus: persist(systems) }
@@ -966,6 +873,7 @@ export const useStore = create<Store>()((set, get) => {
       }
       const converted = map ? fromMetroDreamin(map) : null
       if (!converted) return 'Could not read that MetroDreamin map.'
+      converted.meta.branchedFrom = 'metrodreamin.com'
       adoptSystem(converted)
       setTimeout(() => fitPoints(Object.values(converted.stations)), 350)
       return null
@@ -1011,11 +919,11 @@ export const useStore = create<Store>()((set, get) => {
               currentId: remote.meta.id,
               selectedLineId: null,
               selectedStationId: null,
-              activePath: null,
               past: [],
               future: [],
               newMapOpen: false,
               hiddenGroups: hiddenByMap[remote.meta.id] ?? [],
+              nameHints: {},
             }
           })
         }

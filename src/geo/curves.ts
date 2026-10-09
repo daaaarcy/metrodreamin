@@ -93,28 +93,3 @@ export function pathLengthKm(coords: LngLat[], closed = false): number {
   if (closed && coords.length > 2) sum += haversineKm(coords[coords.length - 1], coords[0])
   return sum
 }
-
-interface XY {
-  x: number
-  y: number
-}
-
-/** Closest segment of a polyline to point p, in screen/mercator xy space. */
-export function nearestOnPolyline(
-  p: XY,
-  polyline: XY[],
-): { index: number; t: number; point: XY; dist: number } | null {
-  let best: { index: number; t: number; point: XY; dist: number } | null = null
-  for (let i = 0; i < polyline.length - 1; i++) {
-    const a = polyline[i]
-    const b = polyline[i + 1]
-    const dx = b.x - a.x
-    const dy = b.y - a.y
-    const len2 = dx * dx + dy * dy
-    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2))
-    const q = { x: a.x + dx * t, y: a.y + dy * t }
-    const dist = Math.hypot(p.x - q.x, p.y - q.y)
-    if (!best || dist < best.dist) best = { index: i, t, point: q, dist }
-  }
-  return best
-}

@@ -1,11 +1,24 @@
 import type { BasemapDef } from '../types'
 
-function rasterStyle(tiles: string[], attribution: string) {
+interface RasterOverlay {
+  id: string
+  tiles: string[]
+  attribution: string
+  opacity?: number
+}
+
+function rasterStyle(tiles: string[], attribution: string, overlays: RasterOverlay[] = []) {
   return {
     version: 8 as const,
     glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
     sources: {
       base: { type: 'raster' as const, tiles, tileSize: 256, attribution },
+      ...Object.fromEntries(
+        overlays.map((o) => [
+          o.id,
+          { type: 'raster' as const, tiles: o.tiles, tileSize: 256, attribution: o.attribution },
+        ]),
+      ),
     },
     layers: [
       {
@@ -14,6 +27,12 @@ function rasterStyle(tiles: string[], attribution: string) {
         paint: { 'background-color': '#d5dee6' },
       },
       { id: 'base', type: 'raster' as const, source: 'base' },
+      ...overlays.map((o) => ({
+        id: o.id,
+        type: 'raster' as const,
+        source: o.id,
+        paint: { 'raster-opacity': o.opacity ?? 1 },
+      })),
     ],
   }
 }
@@ -71,6 +90,32 @@ export const BASEMAPS: BasemapDef[] = [
     style: rasterStyle(
       ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
       '© OpenStreetMap contributors',
+    ),
+    dark: false,
+    fonts: OFM_FONTS,
+  },
+  {
+    id: 'railways',
+    label: 'Railways',
+    style: rasterStyle(
+      [
+        'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      ],
+      '© OpenStreetMap contributors',
+      [
+        {
+          id: 'rails',
+          tiles: [
+            'https://a.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',
+            'https://b.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',
+            'https://c.tiles.openrailwaymap.org/standard/{z}/{x}/{y}.png',
+          ],
+          attribution: '© OpenRailwayMap (CC-BY-SA)',
+          opacity: 0.9,
+        },
+      ],
     ),
     dark: false,
     fonts: OFM_FONTS,

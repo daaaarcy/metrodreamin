@@ -51,6 +51,9 @@ export function Sidebar() {
           Local map · created {fmtDate(system.meta.createdAt)} · updated{' '}
           {relTime(system.meta.updatedAt)}
         </div>
+        {system.meta.branchedFrom && (
+          <div className="text-muted text-xs">Branched from {system.meta.branchedFrom}</div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
@@ -133,8 +136,7 @@ export function Sidebar() {
       </div>
 
       <div className="px-4 py-2 border-t border-line text-[10px] text-muted">
-        Click map: add station (or waypoint in waypoint mode) · Click a line: add waypoint ·
-        Click a station: select · Drag to move · ⌘S save
+        Click map: add a point · Click a point: select · Drag a point: move · ⌘S save
       </div>
     </div>
   )

@@ -5,10 +5,10 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // maplibre's default worker URL resolution breaks under bundlers — serve the
 // worker + its shared chunk from /public instead.
 maplibregl.config.WORKER_URL = '/maplibre-gl-worker.mjs'
-import type { Feature, FeatureCollection } from 'geojson'
+import type { FeatureCollection } from 'geojson'
 import { useStore, useSystem } from '../state/store'
 import { basemapById } from './basemaps'
-import { ensureOverlay, LYR_STATIONS, LYR_WAYPOINTS, LYR_WAYPOINTS_SELECTED, LYR_LINES, SRC_LINES, SRC_STATIONS, SRC_WAYPOINTS, SRC_LINKS, SRC_PREVIEW } from './layers'
+import { ensureOverlay, LYR_STATIONS, LYR_WAYPOINTS, LYR_WAYPOINTS_SELECTED, SRC_LINES, SRC_STATIONS, SRC_WAYPOINTS, SRC_LINKS } from './layers'
 import { buildGeo } from './buildGeo'
 import { mapApi } from './mapRef'
 import { VehicleAnimator } from './vehicles'
@@ -16,10 +16,8 @@ import { linePaths, pathCoords, isLoop } from '../geo/stats'
 import { smoothPath } from '../geo/curves'
 import { MODE_BY_ID } from '../data/modes'
 import { groupKey } from '../data/groups'
-import { nearestSegment, pathEndpoint, terminusRole, linesThrough, activePathEndId } from '../geo/query'
 
 const HIT_STATION = 10
-const HIT_LINE = 9
 
 function bbox(p: maplibregl.Point, pad: number): [maplibregl.PointLike, maplibregl.PointLike] {
   return [
@@ -39,8 +37,8 @@ export function MapView() {
   const basemapId = useStore((s) => s.basemapId)
   const hideWaypoints = useStore((s) => s.hideWaypoints)
   const vehiclesOn = useStore((s) => s.vehiclesOn)
-  const activePath = useStore((s) => s.activePath)
   const hiddenGroups = useStore((s) => s.hiddenGroups)
+  const addingWaypoints = useStore((s) => s.addingWaypoints)
 
   const geo = useMemo(() => {
     if (!system) return null
@@ -180,93 +178,18 @@ export function MapView() {
           st.createInterchange(st.pendingInterchangeFrom, pid)
           return
         }
-        // While actively drawing, clicking any existing point links it into
-        // the path (this is how shared/transfer stations are made). Drawing
-        // is armed only by an explicit draw action — never by mere selection.
-        const ap = st.activePath
-        if (ap && sys.lines[ap.lineId] && activePathEndId(sys, ap) !== pid) {
-          st.appendExistingPoint(pid)
-          return
-        }
-        const term = terminusRole(sys, pid, st.selectedLineId)
-        if (term) {
-          // clicking a terminus arms drawing from that end
-          st.selectLine(term.lineId)
-          st.setActivePath(term)
-        } else {
-          // switch edit context to the clicked station's line (no drawing)
-          const mine = linesThrough(sys, pid)
-          const lid = mine.some((l) => l.id === st.selectedLineId)
-            ? st.selectedLineId
-            : (mine[0]?.id ?? null)
-          if (lid && lid !== st.selectedLineId) {
-            st.selectLine(lid)
-          }
-        }
+        // clicking a point only selects it — lines grow via "Add to X" actions
         st.selectStation(pid)
         return
       }
 
-      // 2) line segment → insert waypoint
-      const lineHits = map.queryRenderedFeatures(bbox(e.point, HIT_LINE), {
-        layers: [LYR_LINES],
-      })
-      if (lineHits.length) {
-        const seg = nearestSegment(sys, map, e.lngLat)
-        if (seg) {
-          const prevPath = st.activePath
-          st.insertPointOnLine(seg.lineId, seg.branchIndex, seg.insertIndex, seg.lng, seg.lat)
-          st.selectLine(seg.lineId)
-          // keep drawing where the user was drawing
-          st.setActivePath(
-            prevPath ?? { lineId: seg.lineId, branchIndex: seg.branchIndex, end: 'end' },
-          )
-          return
-        }
-      }
-
-      // 3) empty space → extend active path / selected line / new line
+      // 2) empty space or line body → standalone point (never on a line)
       st.addPoint(e.lngLat.lng, e.lngLat.lat)
     })
 
-    // live preview from active path end to cursor
+    // pointer affordance over clickable points
     map.on('mousemove', (e: maplibregl.MapMouseEvent) => {
       if (dragIdRef.current) return
-      const st = useStore.getState()
-      const sys = st.currentId ? st.systems[st.currentId] : undefined
-      const ap = st.activePath
-      const src = map.getSource(SRC_PREVIEW) as maplibregl.GeoJSONSource | undefined
-      if (!src) return
-      if (!sys || !ap) {
-        src.setData({ type: 'FeatureCollection', features: [] })
-        return
-      }
-      const from = pathEndpoint(sys, ap.lineId, ap.branchIndex, ap.end)
-      if (!from) {
-        src.setData({ type: 'FeatureCollection', features: [] })
-        return
-      }
-      const features: Feature[] = [
-        {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: [
-              [from.lng, from.lat],
-              [e.lngLat.lng, e.lngLat.lat],
-            ],
-          },
-          properties: { kind: 'line' },
-        },
-        {
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [e.lngLat.lng, e.lngLat.lat] },
-          properties: { kind: 'dot' },
-        },
-      ]
-      src.setData({ type: 'FeatureCollection', features })
-
-      // pointer affordance
       const hover = map.queryRenderedFeatures(bbox(e.point, HIT_STATION), {
         layers: [LYR_STATIONS, LYR_WAYPOINTS, 'md-transfer-inner'],
       })
@@ -290,7 +213,6 @@ export function MapView() {
       } else if (ev.key === 'Escape') {
         st.selectStation(null)
         st.selectLine(null)
-        st.setActivePath(null)
         st.setPendingInterchange(null)
       } else if ((ev.key === 'Delete' || ev.key === 'Backspace') && st.selectedStationId) {
         st.deletePoint(st.selectedStationId)
@@ -342,14 +264,15 @@ export function MapView() {
     else animator.stop()
   }, [vehiclesOn])
 
-  // hint line: tell the user what clicking does
+  // hint line: tell the user what clicking does (the waypoint banner covers
+  // the armed case, so suppress the hint then)
   const hint = useMemo(() => {
     const sys = system
-    if (!sys) return null
-    if (!Object.keys(sys.lines).length) return 'Tap the map to start your first line'
-    if (activePath) return 'Tap the map or an existing station to extend the line — Esc to stop'
+    if (!sys || addingWaypoints) return null
+    if (!Object.keys(sys.lines).length && !Object.keys(sys.stations).length)
+      return 'Tap the map to place a station'
     return null
-  }, [system, activePath])
+  }, [system, addingWaypoints])
 
   return (
     <div className="absolute inset-0">
@@ -357,6 +280,11 @@ export function MapView() {
       {hint && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 panel px-4 py-2 text-sm text-muted pointer-events-none">
           {hint}
+        </div>
+      )}
+      {addingWaypoints && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 panel px-3 py-1.5 text-xs pointer-events-none">
+          ◦ Placing waypoints — convert one back to a station to place stops
         </div>
       )}
     </div>

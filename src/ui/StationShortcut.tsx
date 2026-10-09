@@ -44,31 +44,36 @@ export function StationShortcut() {
 
   return (
     <div
-      className="absolute z-20 panel flex items-center gap-1 px-1.5 py-1"
+      className="absolute z-20 panel flex flex-col p-1 w-44"
       style={{ left: pos.x, top: pos.y }}
     >
-      {near.map((l) => (
-        <button
-          key={l.id}
-          title={`Add to ${l.name}`}
-          className="w-4 h-4 rounded-full border border-line cursor-pointer"
-          style={{ backgroundColor: l.color }}
-          onClick={() => addToLine(l.id, p.id)}
-        />
-      ))}
+      {near.length > 0 && (
+        <div>
+          <div className="label px-1.5 pt-0.5">Add to line</div>
+          <div className="flex items-center gap-1 px-1.5 py-1">
+            {near.map((l) => (
+              <button
+                key={l.id}
+                title={`Add to ${l.name}`}
+                className="w-5 h-5 rounded-full border border-line cursor-pointer"
+                style={{ backgroundColor: l.color }}
+                onClick={() => addToLine(l.id, p.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       <button
-        className="btn text-xs !px-1.5 !py-0.5"
-        title={p.waypoint ? 'Convert to station' : 'Convert to waypoint'}
+        className="w-full text-left text-xs px-2 py-1.5 rounded-md hover:bg-hover cursor-pointer"
         onClick={() => convertPoint(p.id, !p.waypoint)}
       >
-        {p.waypoint ? '◉' : '◦'}
+        {p.waypoint ? '● Convert to station' : '◦ Convert to waypoint'}
       </button>
       <button
-        className="btn text-xs !px-1.5 !py-0.5"
-        title="Delete"
+        className="w-full text-left text-xs px-2 py-1.5 rounded-md hover:bg-hover cursor-pointer"
         onClick={() => deletePoint(p.id)}
       >
-        🗑
+        🗑 Delete
       </button>
     </div>
   )
